@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -13,7 +14,12 @@ import (
 
 func main() {
 
-	args := os.Args[1:]
+	var output string
+	flag.StringVar(&output, "o", "", "Write output to a file")
+	flag.Parse()
+
+	fmt.Println(output)
+	args := flag.Args()
 	searchKey := args[0]
 
 	switch len(args) {
@@ -38,9 +44,9 @@ func main() {
 		}
 	//Write the output to a file
 	case 4:
-		if args[2] == "-o" {
+		if output != "" {
 			inputFileName := args[1]
-			outputFileName := args[3]
+			outputFileName := output
 			matchedLines := searchInFile(searchKey, inputFileName)
 			writeToFile(matchedLines, outputFileName)
 
@@ -61,11 +67,12 @@ func searchFromConsole(searchKey string) []string {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		input, err := reader.ReadString('\n')
-		handleErr(err)
 		input = strings.TrimSpace(input)
-		if input != "." {
-			inputs = append(inputs, input)
+		inputs = append(inputs, input)
+		if err != io.EOF {
+			handleErr(err)
 		} else {
+			inputs = inputs[:len(inputs)-1]
 			break
 		}
 	}
