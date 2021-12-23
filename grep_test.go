@@ -22,7 +22,7 @@ func TestFindMatches(t *testing.T) {
 	for _, test := range grepTests {
 		t.Run(test.testName, func(t *testing.T) {
 			got := findMatches(test.searchKey, test.inputs)
-			if reflect.DeepEqual(got, test.want) == false {
+			if !reflect.DeepEqual(got, test.want) {
 				t.Errorf("FindMatches(%s) got %v, want %v", test.testName, got, test.want)
 			}
 		})

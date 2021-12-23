@@ -10,19 +10,26 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 )
+
+var waitGroup sync.WaitGroup
 
 func main() {
 
-	var output string
+	var output, searchKey string
 	flag.StringVar(&output, "o", "", "Write output to a file")
 	flag.Parse()
 
-	fmt.Println(output)
 	args := flag.Args()
-	searchKey := args[0]
+	if len(args) != 0 {
+		searchKey = args[0]
+	}
 
 	switch len(args) {
+	case 0:
+		fmt.Println("Please provide proper arguments")
 	//Search for a string from standard input
 	case 1:
 		matchedLines := searchFromConsole(searchKey)
@@ -63,35 +70,14 @@ func main() {
 
 func searchFromConsole(searchKey string) []string {
 
-	inputs := []string{}
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		input, err := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-		inputs = append(inputs, input)
-		if err != io.EOF {
-			handleErr(err)
-		} else {
-			inputs = inputs[:len(inputs)-1]
-			break
-		}
-	}
+	inputs := readInputFromConsole()
 	matchedLines := findMatches(searchKey, inputs)
 	return matchedLines
 }
 
 func searchInFile(searchKey, fileName string) []string {
 
-	file, err := os.Open(fileName)
-	handleErr(err)
-	defer file.Close()
-
-	inputs := []string{}
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		inputs = append(inputs, scanner.Text())
-	}
+	inputs := readInputFromFile(fileName)
 
 	matchedLines := findMatches(searchKey, inputs)
 	return matchedLines
@@ -99,14 +85,21 @@ func searchInFile(searchKey, fileName string) []string {
 
 func performRecursiveMatching(searchKey, directory string) {
 
+	now := time.Now()
 	filePaths := returnFilePaths(directory)
+	afterFilePath := time.Since(now)
+	waitGroup.Add(len(filePaths))
+	results := make(chan map[string][]string)
+	findMultipleFileMatches(searchKey, filePaths, results)
 
-	matchesMap := findMultipleFileMatches(searchKey, filePaths)
-
-	for key, value := range matchesMap {
-		prefix := key + " : "
-		printOnConsole(value, prefix)
+	for result := range results {
+		for key, value := range result {
+			prefix := key + " : "
+			printOnConsole(value, prefix)
+		}
 	}
+	fmt.Println(afterFilePath)
+	fmt.Println(time.Since(now))
 }
 
 func findMatches(searchKey string, inputs []string) []string {
@@ -161,11 +154,56 @@ func returnFilePaths(directory string) []string {
 	return filePaths
 }
 
-func findMultipleFileMatches(searchKey string, filePaths []string) map[string][]string {
+func findMultipleFileMatches(searchKey string, filePaths []string, results chan map[string][]string) {
 
-	matchMap := make(map[string][]string)
 	for _, path := range filePaths {
-		matchMap[path] = searchInFile(searchKey, path)
+		go paralleSearchInFile(searchKey, path, results)
 	}
-	return matchMap
+
+	// Launch a goroutine to monitor when all the work is done.
+	go func() {
+		waitGroup.Wait()
+		close(results)
+	}()
+
+}
+
+func paralleSearchInFile(searchKey, path string, results chan map[string][]string) {
+	matchMap := make(map[string][]string)
+	matchMap[path] = searchInFile(searchKey, path)
+	results <- matchMap
+	waitGroup.Done()
+}
+
+func readInputFromConsole() []string {
+
+	inputs := []string{}
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		input, err := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+		inputs = append(inputs, input)
+		if err != io.EOF {
+			handleErr(err)
+		} else {
+			inputs = inputs[:len(inputs)-1]
+			break
+		}
+	}
+	return inputs
+}
+
+func readInputFromFile(fileName string) []string {
+
+	file, err := os.Open(fileName)
+	handleErr(err)
+	defer file.Close()
+
+	inputs := []string{}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		inputs = append(inputs, scanner.Text())
+	}
+	return inputs
 }
